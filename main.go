@@ -3,29 +3,20 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
 
+	"github.com/alecthomas/kong"
 	"github.com/charmbracelet/bubbles/textarea"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/dop251/goja"
 )
 
+type CLI struct {
+	Fullscreen bool   `help:"Run fullscreen"`
+	Filename   string `short:"f" help:"Javascript file to run"`
+}
+
 type errMsg error
-
-type console struct {
-	output string
-}
-
-func (c *console) Log(messages ...string) {
-	for _, msg := range messages {
-		c.output += fmt.Sprintf("%s\n", msg)
-	}
-}
-
-type jsReturnMsg struct {
-	err    string
-	output string
-}
 
 type model struct {
 	textarea   textarea.Model
@@ -44,29 +35,6 @@ func (m model) Init() tea.Cmd {
 	return textarea.Blink
 }
 
-func (m *model) runJS() tea.Cmd {
-	return func() tea.Msg {
-		vm := goja.New()
-		c := &console{}
-
-		consoleObj := vm.NewObject()
-		consoleObj.Set("log", func(args ...interface{}) {
-			messages := make([]string, len(args))
-			for i, arg := range args {
-				messages[i] = fmt.Sprintf("%v", arg)
-			}
-			c.Log(messages...)
-		})
-		vm.Set("console", consoleObj)
-
-		_, err := vm.RunString(m.textarea.Value())
-		if err != nil {
-			return jsReturnMsg{err: err.Error(), output: ""}
-		}
-		return jsReturnMsg{err: "", output: c.output}
-	}
-}
-
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 	var cmd tea.Cmd
@@ -81,7 +49,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyCtrlC:
 			return m, tea.Quit
 		case tea.KeyCtrlG:
-			cmd = m.runJS()
+			cmd = runJs(m.textarea.Value())
 			cmds = append(cmds, cmd)
 			m.running = true
 		default:
@@ -118,7 +86,29 @@ func (m model) View() string {
 }
 
 func main() {
-	p := tea.NewProgram(initialModel())
+	var cli CLI
+	kong.Parse(&cli)
+
+	if cli.Filename != "" {
+		src, err := readJSFile(cli.Filename)
+		if err != nil {
+			log.Fatalf("couldn't open file %s", cli.Filename)
+		}
+		cmd := runJs(src)
+		ret := cmd().(jsReturnMsg) // a bit hacky, but it's a bubbletea command so...
+		if ret.err != "" {
+			log.Fatal(ret.err)
+		}
+		fmt.Print(ret.output)
+		os.Exit(0)
+	}
+
+	var p *tea.Program
+	if cli.Fullscreen {
+		p = tea.NewProgram(initialModel(), tea.WithAltScreen())
+	} else {
+		p = tea.NewProgram(initialModel())
+	}
 	if _, err := p.Run(); err != nil {
 		log.Fatal(err)
 	}

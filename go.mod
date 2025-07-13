@@ -3,6 +3,7 @@ module github.com/rahji/jsizzle
 go 1.23.3
 
 require (
+	github.com/alecthomas/kong v1.12.0
 	github.com/charmbracelet/bubbles v0.21.0
 	github.com/charmbracelet/bubbletea v1.3.6
 	github.com/dop251/goja v0.0.0-20250630131328-58d95d85e994
