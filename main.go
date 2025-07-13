@@ -33,14 +33,14 @@ type model struct {
 	viewport viewport.Model
 	focus    focusArea
 	running  bool
-	err      error
+	err      string
 }
 
 func initialModel() model {
 	ta := textarea.New()
 	ta.Focus()
 	vp := viewport.New(0, 0)
-	return model{textarea: ta, viewport: vp, err: nil, focus: left}
+	return model{textarea: ta, viewport: vp, focus: left}
 }
 
 func (m model) Init() tea.Cmd {
@@ -70,6 +70,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyCtrlC:
 			return m, tea.Quit
 		case tea.KeyCtrlG:
+			m.err = ""
 			cmd = runJs(m.textarea.Value())
 			cmds = append(cmds, cmd)
 			m.running = true
@@ -91,12 +92,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case jsReturnMsg:
 		m.running = false
 		if msg.err != "" {
-			m.viewport.SetContent(msg.err)
+			m.viewport.SetContent("")
+			m.err = msg.err
 		} else {
 			m.viewport.SetContent(msg.output)
 		}
 	case errMsg:
-		m.err = msg
+		m.err = msg.Error()
 		return m, nil
 	}
 
@@ -130,9 +132,17 @@ func (m model) View() string {
 	rightStyle := lipgloss.NewStyle().
 		Background(lipgloss.Color("#4C4E52")).
 		Padding(4)
+	errorStyle := lipgloss.NewStyle().
+		Background(lipgloss.Color("#9E3BEC")).
+		Padding(4)
 
 	left := leftStyle.Render(m.textarea.View())
-	right := rightStyle.Render(m.viewport.View())
+	var right string
+	if m.err != "" {
+		right = errorStyle.Render(m.err)
+	} else {
+		right = rightStyle.Render(m.viewport.View())
+	}
 	top := lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 
 	return lipgloss.JoinVertical(
