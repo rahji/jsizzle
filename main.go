@@ -7,6 +7,7 @@ import (
 
 	"github.com/alecthomas/kong"
 	"github.com/charmbracelet/bubbles/textarea"
+	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/lipgloss"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -18,19 +19,28 @@ type CLI struct {
 
 type errMsg error
 
+type focusArea int
+
+const (
+	left focusArea = iota
+	right
+)
+
 type model struct {
 	width    int
 	height   int
 	textarea textarea.Model
-	output   string
+	viewport viewport.Model
+	focus    focusArea
 	running  bool
 	err      error
 }
 
 func initialModel() model {
-	ti := textarea.New()
-	ti.Focus()
-	return model{textarea: ti, err: nil}
+	ta := textarea.New()
+	ta.Focus()
+	vp := viewport.New(0, 0)
+	return model{textarea: ta, viewport: vp, err: nil, focus: left}
 }
 
 func (m model) Init() tea.Cmd {
@@ -48,6 +58,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.textarea.Focused() {
 				m.textarea.Blur()
 			}
+		case tea.KeyShiftTab:
+			if m.focus == left {
+				m.focus = right
+				m.textarea.Blur()
+			} else {
+				m.focus = left
+				m.textarea.Focus()
+			}
+			return m, nil
 		case tea.KeyCtrlC:
 			return m, tea.Quit
 		case tea.KeyCtrlG:
@@ -63,32 +82,47 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.textarea.SetWidth(msg.Width / 2)
-		m.textarea.SetHeight(msg.Height - 2)
+		halfWidth := msg.Width / 2
+		usableHeight := msg.Height - 8 // minus status line
+		m.textarea.SetWidth(halfWidth)
+		m.textarea.SetHeight(usableHeight)
+		m.viewport.Width = msg.Width - halfWidth
+		m.viewport.Height = usableHeight
+		m.viewport.Width = msg.Width - halfWidth
+		m.viewport.Height = usableHeight
 	case jsReturnMsg:
 		m.running = false
 		if msg.err != "" {
-			m.output = msg.err
+			m.viewport.SetContent(msg.err)
 		} else {
-			m.output = msg.output
+			m.viewport.SetContent(msg.output)
 		}
 	case errMsg:
 		m.err = msg
 		return m, nil
 	}
 
-	m.textarea, cmd = m.textarea.Update(msg)
-	cmds = append(cmds, cmd)
+	// Update only the focused component
+	switch m.focus {
+	case left:
+		m.textarea, cmd = m.textarea.Update(msg)
+		cmds = append(cmds, cmd)
+	case right:
+		m.viewport, cmd = m.viewport.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+
 	return m, tea.Batch(cmds...)
 }
 
 func (m model) View() string {
 	left := lipgloss.NewStyle().Width(m.width / 2).Render(m.textarea.View())
-	right := lipgloss.NewStyle().Width(m.width - m.width/2).Render(m.output)
+	right := lipgloss.NewStyle().Width(m.width - m.width/2).Render(m.viewport.View())
 	top := lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 
-	instructions := "(ctrl+g to run, ctrl+c to quit)"
-	return lipgloss.JoinVertical(lipgloss.Left, top, instructions)
+	heading := "\n\nJSizzle\n\n"
+	instructions := "\n\n// ctrl+g to run // shift+tab to switch sides // ctrl+c to quit //\n\n"
+	return lipgloss.JoinVertical(lipgloss.Left, heading, top, instructions)
 }
 
 func main() {
