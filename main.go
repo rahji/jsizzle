@@ -83,13 +83,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		halfWidth := msg.Width / 2
-		usableHeight := msg.Height - 8 // minus status line
-		m.textarea.SetWidth(halfWidth)
-		m.textarea.SetHeight(usableHeight)
-		m.viewport.Width = msg.Width - halfWidth
-		m.viewport.Height = usableHeight
-		m.viewport.Width = msg.Width - halfWidth
-		m.viewport.Height = usableHeight
+		usableHeight := msg.Height - 4
+		m.textarea.SetWidth(halfWidth - 4)
+		m.textarea.SetHeight(usableHeight - 4)
+		m.viewport.Width = msg.Width - halfWidth - 8
+		m.viewport.Height = usableHeight - 8
 	case jsReturnMsg:
 		m.running = false
 		if msg.err != "" {
@@ -116,13 +114,33 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	left := lipgloss.NewStyle().Width(m.width / 2).Render(m.textarea.View())
-	right := lipgloss.NewStyle().Width(m.width - m.width/2).Render(m.viewport.View())
+	headingStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("#FAFAFA")).
+		Background(lipgloss.Color("#7D56F4")).
+		PaddingTop(1).
+		PaddingLeft(2)
+	instructionStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#FFFDF5")).
+		Background(lipgloss.Color("#FF5F87")).
+		Padding(0, 1).
+		MarginRight(1)
+	leftStyle := lipgloss.NewStyle().
+		Padding(2)
+	rightStyle := lipgloss.NewStyle().
+		Background(lipgloss.Color("#4C4E52")).
+		Padding(4)
+
+	left := leftStyle.Render(m.textarea.View())
+	right := rightStyle.Render(m.viewport.View())
 	top := lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 
-	heading := "\n\nJSizzle\n\n"
-	instructions := "\n\n// ctrl+g to run // shift+tab to switch sides // ctrl+c to quit //\n\n"
-	return lipgloss.JoinVertical(lipgloss.Left, heading, top, instructions)
+	return lipgloss.JoinVertical(
+		lipgloss.Left,
+		headingStyle.Render("JSizzle"),
+		top,
+		instructionStyle.Render("ctrl+g to run // shift+tab to switch sides // ctrl+c to quit"),
+	)
 }
 
 func main() {
