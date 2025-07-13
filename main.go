@@ -7,22 +7,24 @@ import (
 
 	"github.com/alecthomas/kong"
 	"github.com/charmbracelet/bubbles/textarea"
+	"github.com/charmbracelet/lipgloss"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 type CLI struct {
-	Fullscreen bool   `help:"Run fullscreen"`
-	Filename   string `short:"f" help:"Javascript file to run"`
+	Filename string `short:"f" help:"Javascript file to run"`
 }
 
 type errMsg error
 
 type model struct {
-	textarea   textarea.Model
-	statusLine string
-	running    bool
-	err        error
+	width    int
+	height   int
+	textarea textarea.Model
+	output   string
+	running  bool
+	err      error
 }
 
 func initialModel() model {
@@ -58,14 +60,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmds = append(cmds, cmd)
 			}
 		}
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		m.textarea.SetWidth(msg.Width / 2)
+		m.textarea.SetHeight(msg.Height - 2)
 	case jsReturnMsg:
 		m.running = false
 		if msg.err != "" {
-			// xxx this should show up in a status line or output window in red?
-			m.statusLine = msg.err
+			m.output = msg.err
 		} else {
-			// xxx this should show up in output window
-			m.statusLine = msg.output
+			m.output = msg.output
 		}
 	case errMsg:
 		m.err = msg
@@ -78,11 +83,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	return fmt.Sprintf("\n%s\n\n%s %s",
-		m.textarea.View(),
-		"(ctrl+g to run, ctrl+c to quit)",
-		m.statusLine,
-	) + "\n\n"
+	left := lipgloss.NewStyle().Width(m.width / 2).Render(m.textarea.View())
+	right := lipgloss.NewStyle().Width(m.width - m.width/2).Render(m.output)
+	top := lipgloss.JoinHorizontal(lipgloss.Top, left, right)
+
+	instructions := "(ctrl+g to run, ctrl+c to quit)"
+	return lipgloss.JoinVertical(lipgloss.Left, top, instructions)
 }
 
 func main() {
@@ -104,11 +110,7 @@ func main() {
 	}
 
 	var p *tea.Program
-	if cli.Fullscreen {
-		p = tea.NewProgram(initialModel(), tea.WithAltScreen())
-	} else {
-		p = tea.NewProgram(initialModel())
-	}
+	p = tea.NewProgram(initialModel(), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		log.Fatal(err)
 	}
