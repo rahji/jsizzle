@@ -12,16 +12,26 @@ import (
 
 type errMsg error
 
+type console struct {
+	output string
+}
+
+func (c *console) Log(messages ...string) {
+	for _, msg := range messages {
+		c.output += fmt.Sprintf("%s\n", msg)
+	}
+}
+
 type jsReturnMsg struct {
-	err string
+	err    string
+	output string
 }
 
 type model struct {
-	textarea  textarea.Model
-	jsOutput  string
-	status    string
-	runningJs bool
-	err       error
+	textarea   textarea.Model
+	statusLine string
+	running    bool
+	err        error
 }
 
 func initialModel() model {
@@ -37,16 +47,23 @@ func (m model) Init() tea.Cmd {
 func (m *model) runJS() tea.Cmd {
 	return func() tea.Msg {
 		vm := goja.New()
-		console := vm.NewObject()
-		console.Set("log", func(args ...interface{}) {
-			m.jsOutput = fmt.Sprintln(args...)
+		c := &console{}
+
+		consoleObj := vm.NewObject()
+		consoleObj.Set("log", func(args ...interface{}) {
+			messages := make([]string, len(args))
+			for i, arg := range args {
+				messages[i] = fmt.Sprintf("%v", arg)
+			}
+			c.Log(messages...)
 		})
-		vm.Set("console", console)
+		vm.Set("console", consoleObj)
+
 		_, err := vm.RunString(m.textarea.Value())
 		if err != nil {
-			return jsReturnMsg{err: err.Error()}
+			return jsReturnMsg{err: err.Error(), output: ""}
 		}
-		return jsReturnMsg{err: ""}
+		return jsReturnMsg{err: "", output: c.output}
 	}
 }
 
@@ -65,9 +82,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case tea.KeyCtrlG:
 			cmd = m.runJS()
-			// fmt.Println(m.jsOutput) //xxx
 			cmds = append(cmds, cmd)
-			m.runningJs = true
+			m.running = true
 		default:
 			if !m.textarea.Focused() {
 				cmd = m.textarea.Focus()
@@ -75,13 +91,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case jsReturnMsg:
-		m.runningJs = false
+		m.running = false
 		if msg.err != "" {
 			// xxx this should show up in a status line or output window in red?
-			m.status = msg.err
+			m.statusLine = msg.err
 		} else {
 			// xxx this should show up in output window
-			m.status = m.jsOutput
+			m.statusLine = msg.output
 		}
 	case errMsg:
 		m.err = msg
@@ -97,7 +113,7 @@ func (m model) View() string {
 	return fmt.Sprintf("\n%s\n\n%s %s",
 		m.textarea.View(),
 		"(ctrl+g to run, ctrl+c to quit)",
-		m.status,
+		m.statusLine,
 	) + "\n\n"
 }
 
